@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>F.R.I.D.A.Y</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cyan: #00d4ff;
+    --gold: #ffa500;
+    --pink: #ff2d78;
+    --green: #00ff9f;
+    --orange: #ff8800;
+    --dark: #000d1a;
+    --panel: rgba(0,20,40,0.85);
+    --border: rgba(0,212,255,0.25);
+    --glow: 0 0 20px rgba(0,212,255,0.4);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--dark);
+    color: var(--cyan);
+    font-family: 'Share Tech Mono', monospace;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+  body::before {
+    content:'';
+    position:fixed; inset:0;
+    background-image: linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    animation: gridScroll 20s linear infinite;
+    pointer-events:none; z-index:0;
+  }
+  @keyframes gridScroll { to { background-position: 40px 40px; } }
+  body::after {
+    content:'';
+    position:fixed; inset:0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,212,255,0.015) 2px, rgba(0,212,255,0.015) 4px);
+    pointer-events:none; z-index:1;
+    animation: scanMove 8s linear infinite;
+  }
+  @keyframes scanMove { 0%,100%{opacity:1} 50%{opacity:0.5} }
+  .container { position:relative; z-index:2; padding:12px; }
+  header {
+    display:flex; align-items:center; justify-content:space-between;
+    border-bottom: 1px solid var(--border);
+    padding-bottom:10px; margin-bottom:14px;
+    flex-wrap:wrap; gap:10px;
+  }
+  .logo {
+    font-family:'Orbitron',sans-serif; font-size:22px; font-weight:900;
+    color:var(--cyan); letter-spacing:6px;
+    text-shadow: 0 0 30px var(--cyan), 0 0 60px rgba(0,212,255,0.3);
+    animation: logoPulse 3s ease-in-out infinite;
+  }
+  @keyframes logoPulse { 0%,100%{text-shadow:0 0 20px var(--cyan)} 50%{text-shadow:0 0 40px var(--cyan),0 0 80px rgba(0,212,255,0.5)} }
+  .header-right { display:flex; gap:20px; align-items:center; }
+  .clock { font-family:'Orbitron',sans-serif; font-size:18px; color:var(--gold); }
+  .date-display { font-size:11px; color:rgba(0,212,255,0.6); text-align:right; }
+  .status-bar {
+    display:flex; gap:16px; margin-bottom:14px;
+    padding:8px 14px; background:var(--panel);
+    border:1px solid var(--border); border-radius:4px;
+    flex-wrap:wrap; align-items:center;
+  }
+  .status-item { font-size:10px; display:flex; align-items:center; gap:6px; }
+  .dot { width:7px; height:7px; border-radius:50%; animation: blink 1.5s infinite; }
+  .dot.green  { background:var(--green);  box-shadow:0 0 8px var(--green); }
+  .dot.cyan   { background:var(--cyan);   box-shadow:0 0 8px var(--cyan);  animation-delay:.5s; }
+  .dot.gold   { background:var(--gold);   box-shadow:0 0 8px var(--gold);  animation-delay:1s; }
+  .dot.orange { background:var(--orange); box-shadow:0 0 8px var(--orange);animation-delay:.3s; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* ── News region tabs ── */
+  .news-tabs {
+    display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;
+  }
+  .news-tab {
+    font-size:9px; padding:4px 10px;
+    border-radius:3px; cursor:pointer;
+    border:1px solid var(--border);
+    background:rgba(0,20,40,0.6);
+    color:rgba(0,212,255,0.6);
+    letter-spacing:1px;
+    transition: all .2s;
+    font-family:'Share Tech Mono',monospace;
+  }
+  .news-tab:hover, .news-tab.active {
+    background:rgba(0,212,255,0.15);
+    border-color:var(--cyan);
+    color:var(--cyan);
+    box-shadow: var(--glow);
+  }
+  .news-tab.active { font-weight:bold; }
+
+  .grid {
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap:10px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius:6px; padding:12px;
+    position:relative; overflow:hidden;
+    backdrop-filter: blur(10px);
+    transition: border-color .3s;
+  }
+  .panel:hover { border-color: rgba(0,212,255,0.6); box-shadow: var(--glow); }
+  .panel::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:2px;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    animation: scanLine 3s ease-in-out infinite;
+  }
+  @keyframes scanLine { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
+  .panel-title {
+    font-family:'Orbitron',sans-serif; font-size:9px; font-weight:700;
+    letter-spacing:3px; color:var(--cyan); margin-bottom:10px;
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  }
+  .panel-title::after {
+    content:''; flex:1; height:1px;
+    background: linear-gradient(90deg, var(--border), transparent);
+  }
+  .markets-panel { grid-column: 1 / 2; }
+  .ticker {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:6px 0; border-bottom:1px solid rgba(0,212,255,0.08);
+  }
+  .ticker-name  { font-size:11px; color:rgba(255,255,255,0.8); }
+  .ticker-price { font-family:'Orbitron',sans-serif; font-size:12px; }
+  .ticker-change{ font-size:10px; }
+  .up   { color: var(--green); }
+  .down { color: var(--pink);  }
+
+  .news-panel { grid-column: 2 / 4; }
+  .news-source-badge {
+    display:inline-block; font-size:8px; padding:1px 5px;
+    border-radius:2px; margin-right:4px;
+    font-family:'Orbitron',sans-serif; letter-spacing:1px;
+  }
+  .badge-india   { background:rgba(255,136,0,0.2); color:var(--orange); border:1px solid rgba(255,136,0,0.4); }
+  .badge-world   { background:rgba(0,212,255,0.1); color:var(--cyan);   border:1px solid var(--border); }
+  .badge-tech    { background:rgba(0,255,159,0.1); color:var(--green);  border:1px solid rgba(0,255,159,0.3); }
+  .badge-biz     { background:rgba(255,165,0,0.1); color:var(--gold);   border:1px solid rgba(255,165,0,0.3); }
+  .news-item {
+    padding:7px 0; border-bottom:1px solid rgba(0,212,255,0.08);
+    cursor:pointer; transition:all .2s;
+  }
+  .news-item:hover { padding-left:8px; border-left:2px solid var(--cyan); background:rgba(0,212,255,0.05); }
+  .news-headline { font-size:11px; color:rgba(255,255,255,0.85); line-height:1.4; }
+  .news-meta     { font-size:9px;  color:rgba(0,212,255,0.5); margin-top:3px; }
+  .news-source   { color:var(--gold); }
+
+  .map-panel   { grid-column: 1 / 3; grid-row: 2; min-height:220px; }
+  #world-map   { width:100%; height:190px; background:#001020; border-radius:4px; }
+  .brief-panel { grid-column: 3;    grid-row: 2; }
+  .brief-content { font-size:11px; line-height:1.7; color:rgba(255,255,255,0.8); }
+  .brief-content .highlight { color:var(--cyan); font-weight:bold; }
+  .typing-cursor { display:inline-block; width:8px; height:14px; background:var(--cyan); animation:cursorBlink .8s infinite; vertical-align:middle; margin-left:2px; }
+  @keyframes cursorBlink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  .crypto-panel { grid-column: 1;    grid-row: 3; }
+  .crypto-item  { display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid rgba(0,212,255,0.08); align-items:center; }
+  .crypto-name  { font-size:10px; font-weight:bold; }
+  .crypto-val   { font-family:'Orbitron',sans-serif; font-size:10px; }
+
+  .feeds-panel  { grid-column: 2 / 4; grid-row: 3; }
+  .feed-grid    { display:grid; grid-template-columns: repeat(4,1fr); gap:6px; }
+  .feed-item {
+    background:rgba(0,10,20,0.8); border:1px solid var(--border);
+    border-radius:4px; padding:8px; text-align:center; cursor:pointer;
+    transition:all .3s; position:relative; overflow:hidden;
+  }
+  .feed-item:hover { border-color:var(--cyan); transform:translateY(-2px); box-shadow:var(--glow); }
+  .feed-icon   { font-size:18px; margin-bottom:4px; }
+  .feed-name   { font-size:8px; color:rgba(255,255,255,0.7); font-weight:bold; }
+  .feed-status { font-size:7px; color:var(--green); margin-top:2px; }
+  .live-badge  {
+    position:absolute; top:3px; right:3px;
+    background:var(--pink); color:#fff; font-size:7px;
+    padding:1px 4px; border-radius:2px; font-family:'Orbitron',sans-serif;
+    animation: blink 1s infinite;
+  }
+
+  .search-bar   { display:flex; gap:8px; margin-bottom:14px; }
+  .search-input {
+    flex:1; background:rgba(0,20,40,0.9); border:1px solid var(--border);
+    color:var(--cyan); font-family:'Share Tech Mono',monospace; font-size:12px;
+    padding:8px 14px; border-radius:4px; outline:none;
+  }
+  .search-input:focus { border-color:var(--cyan); box-shadow:var(--glow); }
+  .search-btn {
+    background:rgba(0,212,255,0.15); border:1px solid var(--cyan);
+    color:var(--cyan); font-family:'Orbitron',sans-serif; font-size:10px;
+    padding:8px 16px; border-radius:4px; cursor:pointer; letter-spacing:2px;
+  }
+  .search-btn:hover { background:rgba(0,212,255,0.3); box-shadow:var(--glow); }
+
+  .arc-reactor { width:40px; height:40px; position:relative; flex-shrink:0; }
+  .arc-ring { position:absolute; border-radius:50%; border:2px solid var(--cyan); animation: arcSpin 3s linear infinite; }
+  .arc-ring:nth-child(1) { inset:0;    opacity:.6; }
+  .arc-ring:nth-child(2) { inset:5px;  border-color:var(--gold); animation-duration:2s;   animation-direction:reverse; opacity:.8; }
+  .arc-ring:nth-child(3) { inset:10px; border-color:var(--cyan); animation-duration:1.5s; }
+  .arc-core { position:absolute; inset:15px; background:var(--cyan); border-radius:50%; box-shadow:0 0 15px var(--cyan),0 0 30px var(--cyan); animation:corePulse 2s ease-in-out infinite; }
+  @keyframes arcSpin  { to { transform:rotate(360deg); } }
+  @keyframes corePulse{ 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.7;transform:scale(.8)} }
+
+  .loading { color:rgba(0,212,255,0.4); font-size:10px; animation:blink 1s infinite; display:inline-block; }
+  .query-display { font-family:'Orbitron',sans-serif; font-size:9px; color:var(--gold); margin-bottom:8px; letter-spacing:2px; border-left:2px solid var(--cyan); padding-left:8px; }
+  .retry-btn { background:transparent; border:1px solid var(--cyan); color:var(--cyan); font-size:9px; padding:4px 8px; border-radius:4px; cursor:pointer; margin-top:8px; }
+  .speech-control { background:rgba(0,212,255,0.2); border:none; color:var(--cyan); font-size:9px; cursor:pointer; border-radius:10px; padding:2px 8px; }
+  .news-count { font-size:9px; color:rgba(0,212,255,0.5); margin-left:6px; }
+
+  .india-alert {
+    background:rgba(255,136,0,0.1); border:1px solid rgba(255,136,0,0.4);
+    border-radius:4px; padding:6px 10px; margin-bottom:8px;
+    font-size:10px; color:var(--orange); display:none;
+  }
+
+  @media (max-width: 860px) {
+    .grid { grid-template-columns:1fr; }
+    .markets-panel,.news-panel,.map-panel,.brief-panel,.crypto-panel,.feeds-panel {
+      grid-column:1 !important; grid-row:auto !important;
+    }
+    .feed-grid { grid-template-columns:repeat(2,1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div style="display:flex;align-items:center;gap:14px;">
+      <div class="arc-reactor"><div class="arc-ring"></div><div class="arc-ring"></div><div class="arc-ring"></div><div class="arc-core"></div></div>
+      <div><div class="logo">F.R.I.D.A.Y</div><div style="font-size:9px;color:rgba(0,212,255,0.5);letter-spacing:2px;">STARK INTELLIGENCE v5.0 — INDIA EDITION</div></div>
+    </div>
+    <div class="header-right">
+      <div><div class="clock" id="clock">--:--:--</div><div class="date-display" id="dateDisplay">---</div></div>
+    </div>
+  </header>
+
+  <div class="status-bar">
+    <div class="status-item"><div class="dot green"></div> MARKET FEED</div>
+    <div class="status-item"><div class="dot cyan"></div>  WORLD NEWS</div>
+    <div class="status-item"><div class="dot orange"></div>INDIA FEEDS</div>
+    <div class="status-item"><div class="dot gold"></div>  CRYPTO LIVE</div>
+    <div class="status-item" style="margin-left:auto;" id="lastUpdate">LAST UPDATE: --</div>
+  </div>
+
+  <div class="search-bar">
+    <input class="search-input" id="queryInput"
+      placeholder="Try: 'Noida news', 'India news', 'Delhi news', 'markets', 'crypto', 'weather'">
+    <button class="search-btn" onclick="handleQuery()">⚡ EXECUTE</button>
+  </div>
+
+  <div class="grid">
+    <!-- MARKETS -->
+    <div class="panel markets-panel">
+      <div class="panel-title">📈 MARKETS</div>
+      <div id="marketsData"><div class="loading">FETCHING...</div></div>
+    </div>
+
+    <!-- NEWS -->
+    <div class="panel news-panel">
+      <div class="panel-title">
+        📡 INTELLIGENCE FEED
+        <span class="news-count" id="newsCount"></span>
+        <button class="speech-control" onclick="speakLatestNews()">🔊 READ</button>
+      </div>
+      <!-- Region tabs -->
+      <div class="news-tabs">
+        <button class="news-tab active" onclick="switchNewsTab('world',    this)">🌍 WORLD</button>
+        <button class="news-tab"        onclick="switchNewsTab('india',    this)">🇮🇳 INDIA</button>
+        <button class="news-tab"        onclick="switchNewsTab('delhi',    this)">🏛 DELHI</button>
+        <button class="news-tab"        onclick="switchNewsTab('noida',    this)">🏙 NOIDA/UP</button>
+        <button class="news-tab"        onclick="switchNewsTab('tech',     this)">💻 TECH</button>
+        <button class="news-tab"        onclick="switchNewsTab('business', this)">💼 BUSINESS</button>
+        <button class="news-tab"        onclick="switchNewsTab('sports',   this)">🏏 SPORTS</button>
+      </div>
+      <div class="india-alert" id="indiaAlert">
+        ⚠ Showing closest available Indian news (hyperlocal Noida feed may vary)
+      </div>
+      <div id="newsData"><div class="loading">LOADING INTELLIGENCE FEED...</div></div>
+    </div>
+
+    <!-- MAP -->
+    <div class="panel map-panel">
+      <div class="panel-title">🌐 GLOBAL SITUATIONAL MAP</div>
+      <div id="world-map"></div>
+    </div>
+
+    <!-- BRIEF -->
+    <div class="panel brief-panel">
+      <div class="panel-title">🤖 FRIDAY BRIEF</div>
+      <div class="query-display" id="queryDisplay">AWAITING COMMAND...</div>
+      <div class="brief-content" id="briefContent">
+        <span>Systems nominal. All intelligence feeds online, Boss.</span><span class="typing-cursor"></span>
+      </div>
+    </div>
+
+    <!-- CRYPTO -->
+    <div class="panel crypto-panel">
+      <div class="panel-title">₿ CRYPTO</div>
+      <div id="cryptoData"><div class="loading">SYNCING...</div></div>
+    </div>
+
+    <!-- FEEDS -->
+    <div class="panel feeds-panel">
+      <div class="panel-title">⚡ LIVE INTEL FEEDS</div>
+      <div class="feed-grid">
+        <div class="feed-item" onclick="openFeed('https://www.bloomberg.com/markets')">
+          <div class="live-badge">LIVE</div><div class="feed-icon">📈</div>
+          <div class="feed-name">BLOOMBERG</div><div class="feed-status">⚡ MARKETS</div>
+        </div>
+        <div class="feed-item" onclick="openFeed('https://ndtv.com')">
+          <div class="live-badge">LIVE</div><div class="feed-icon">🇮🇳</div>
+          <div class="feed-name">NDTV</div><div class="feed-status">📰 INDIA</div>
+        </div>
+        <div class="feed-item" onclick="openFeed('https://timesofindia.indiatimes.com')">
+          <div class="live-badge">LIVE</div><div class="feed-icon">🗞️</div>
+          <div class="feed-name">TIMES OF INDIA</div><div class="feed-status">🔔 TOP STORIES</div>
+        </div>
+        <div class="feed-item" onclick="openFeed('https://www.thehindu.com')">
+          <div class="feed-icon">📜</div>
+          <div class="feed-name">THE HINDU</div><div class="feed-status">📖 NATIONAL</div>
+        </div>
+        <div class="feed-item" onclick="openFeed('https://coinmarketcap.com')">
+          <div class="feed-icon">₿</div>
+          <div class="feed-name">CRYPTO FEED</div><div class="feed-status">🔗 LIVE PRICES</div>
+        </div>
+        <div class="feed-item" onclick="openFeed('https://www.reuters.com')">
+          <div class="live-badge">LIVE</div><div class="feed-icon">🌍</div>
+          <div class="feed-name">REUTERS</div><div class="feed-status">🔵 WORLD</div>
+        </div>
+        <div class="feed-item" onclick="openFeed('https://www.indiatoday.in')">
+          <div class="feed-icon">📺</div>
+          <div class="feed-name">INDIA TODAY</div><div class="feed-status">🔴 BREAKING</div>
+        </div>
+        <div class="feed-item" onclick="openFeed('https://www.flightradar24.com')">
+          <div class="feed-icon">✈️</div>
+          <div class="feed-name">FLIGHT RADAR</div><div class="feed-status">🛫 GLOBAL AIR</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  CLOCK
+// ═══════════════════════════════════════════════════════
+function updateClock() {
+  const n = new Date();
+  document.getElementById('clock').textContent = n.toLocaleTimeString('en-IN',{hour12:false});
+  document.getElementById('dateDisplay').textContent = n.toLocaleDateString('en-IN',{weekday:'long',year:'numeric',month:'short',day:'numeric'});
+}
+setInterval(updateClock,1000); updateClock();
+function openFeed(url){ window.open(url,'_blank'); }
+
+// ═══════════════════════════════════════════════════════
+//  TEXT TO SPEECH
+// ═══════════════════════════════════════════════════════
+let speechQueue = [];
+let isSpeakingNow = false;
+function speakText(text) {
+  if (!text || !window.speechSynthesis) return;
+  speechQueue.push(text);
+  processSpeechQueue();
+}
+function processSpeechQueue() {
+  if (isSpeakingNow || speechQueue.length === 0) return;
+  isSpeakingNow = true;
+  const u = new SpeechSynthesisUtterance(speechQueue.shift());
+  u.rate = 0.92; u.pitch = 1.05;
+  u.onend = u.onerror = () => { isSpeakingNow = false; processSpeechQueue(); };
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+function speak(phrase){ speakText(phrase); }
+
+// ═══════════════════════════════════════════════════════
+//  MAP — centred on India by default
+// ═══════════════════════════════════════════════════════
+let mapInstance = null;
+function initMap() {
+  mapInstance = L.map('world-map').setView([20.5937, 78.9629], 4); // India centre
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    attribution:'&copy; OSM &copy; CartoDB', subdomains:'abcd', maxZoom:19
+  }).addTo(mapInstance);
+
+  // Mark major Indian cities
+  const cities = [
+    {name:"New Delhi",   lat:28.6139, lng:77.2090},
+    {name:"Noida",       lat:28.5355, lng:77.3910},
+    {name:"Mumbai",      lat:19.0760, lng:72.8777},
+    {name:"Bangalore",   lat:12.9716, lng:77.5946},
+    {name:"Hyderabad",   lat:17.3850, lng:78.4867},
+    {name:"Chennai",     lat:13.0827, lng:80.2707},
+    {name:"Kolkata",     lat:22.5726, lng:88.3639},
+  ];
+  cities.forEach(c => {
+    L.circleMarker([c.lat,c.lng],{radius:5,color:'#00d4ff',fillColor:'#00d4ff',fillOpacity:0.7,weight:2})
+     .addTo(mapInstance)
+     .bindPopup(`<b style="color:#00d4ff">${c.name}</b>`);
+  });
+}
+window.addEventListener('load', initMap);
+
+// ═══════════════════════════════════════════════════════
+//  RSS FEED DEFINITIONS
+// ═══════════════════════════════════════════════════════
+const RSS_FEEDS = {
+  world: [
+    { name:"BBC World",  url:"https://feeds.bbci.co.uk/news/world/rss.xml",        badge:"world" },
+    { name:"Al Jazeera", url:"https://www.aljazeera.com/xml/rss/all.xml",           badge:"world" },
+    { name:"Reuters",    url:"https://feeds.reuters.com/reuters/worldNews",          badge:"world" },
+    { name:"AP News",    url:"https://feeds.apnews.com/ApNewsAlerts",                badge:"world" },
+  ],
+  india: [
+    { name:"NDTV India",      url:"https://feeds.feedburner.com/ndtvnews-india-news",                 badge:"india" },
+    { name:"Times of India",  url:"https://timesofindia.indiatimes.com/rssfeedstopstories.cms",       badge:"india" },
+    { name:"The Hindu",       url:"https://www.thehindu.com/news/national/feeder/default.rss",        badge:"india" },
+    { name:"India Today",     url:"https://www.indiatoday.in/rss/home",                               badge:"india" },
+    { name:"Hindustan Times", url:"https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml",  badge:"india" },
+    { name:"NDTV Top",        url:"https://feeds.feedburner.com/ndtvnews-top-stories",                badge:"india" },
+    { name:"Economic Times",  url:"https://economictimes.indiatimes.com/rssfeedstopstories.cms",      badge:"india" },
+    { name:"Mint",            url:"https://www.livemint.com/rss/news",                                badge:"india" },
+    { name:"Indian Express",  url:"https://indianexpress.com/feed/",                                  badge:"india" },
+  ],
+  delhi: [
+    { name:"HT Delhi",     url:"https://www.hindustantimes.com/feeds/rss/cities/delhi/rssfeed.xml",   badge:"india" },
+    { name:"TOI Delhi",    url:"https://timesofindia.indiatimes.com/rss.cms?id=4738&CFID=1",          badge:"india" },
+    { name:"NDTV Delhi",   url:"https://feeds.feedburner.com/ndtvnews-delhi-news",                    badge:"india" },
+    { name:"Indian Express",url:"https://indianexpress.com/section/cities/delhi/feed/",               badge:"india" },
+  ],
+  noida: [
+    // Noida/UP news — use UP editions of major papers + keyword filter
+    { name:"HT UP",        url:"https://www.hindustantimes.com/feeds/rss/cities/lucknow/rssfeed.xml", badge:"india" },
+    { name:"Amar Ujala",   url:"https://www.amarujala.com/rss/breaking-news.xml",                     badge:"india" },
+    { name:"Dainik Jagran", url:"https://www.jagran.com/rss/news-national.xml",                       badge:"india" },
+    { name:"Times of India",url:"https://timesofindia.indiatimes.com/rssfeedstopstories.cms",         badge:"india" },
+    { name:"NDTV India",   url:"https://feeds.feedburner.com/ndtvnews-india-news",                    badge:"india" },
+  ],
+  tech: [
+    { name:"TechCrunch",    url:"https://techcrunch.com/feed/",                        badge:"tech" },
+    { name:"Wired",         url:"https://www.wired.com/feed/rss",                      badge:"tech" },
+    { name:"The Verge",     url:"https://www.theverge.com/rss/index.xml",              badge:"tech" },
+    { name:"Gadgets360",    url:"https://feeds.feedburner.com/NDTV-Tech",              badge:"tech" },
+  ],
+  business: [
+    { name:"Economic Times", url:"https://economictimes.indiatimes.com/rssfeedstopstories.cms", badge:"biz" },
+    { name:"Mint",           url:"https://www.livemint.com/rss/news",                           badge:"biz" },
+    { name:"Business Today", url:"https://www.businesstoday.in/rssfeeds/1549297.cms",           badge:"biz" },
+    { name:"Financial Express",url:"https://www.financialexpress.com/feed/",                    badge:"biz" },
+  ],
+  sports: [
+    { name:"ESPN Cricinfo",  url:"https://www.espncricinfo.com/rss/content/story/feeds/0.xml",  badge:"india" },
+    { name:"Times Sports",   url:"https://timesofindia.indiatimes.com/rss.cms?id=4719590&CFID=1", badge:"india"},
+    { name:"NDTV Sports",    url:"https://feeds.feedburner.com/ndtvnews-sports",                badge:"india" },
+  ]
+};
+
+// Keywords to filter for hyperlocal tabs
+const TAB_KEYWORDS = {
+  noida: ["noida","greater noida","ghaziabad","up","uttar pradesh","ncr","delhi ncr","meerut","agra"],
+  delhi: ["delhi","new delhi","ncr","lutyen","connaught"],
+};
+
+// ═══════════════════════════════════════════════════════
+//  FETCH RSS (via rss2json proxy)
+// ═══════════════════════════════════════════════════════
+async function fetchRSS(feedUrl, sourceName, badgeClass) {
+  try {
+    const proxy = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedUrl)}&count=10`;
+    const res = await fetch(proxy, {signal: AbortSignal.timeout(8000)});
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.items || []).map(item => ({
+      title:   (item.title || "").trim(),
+      link:    item.link  || "#",
+      pubDate: item.pubDate || "",
+      source:  sourceName,
+      badge:   badgeClass
+    })).filter(i => i.title.length > 5);
+  } catch(e) {
+    return [];
+  }
+}
+
+// Fetch all feeds for a tab in parallel
+async function fetchTabNews(tab) {
+  const feeds = RSS_FEEDS[tab] || RSS_FEEDS.world;
+  const results = await Promise.allSettled(
+    feeds.map(f => fetchRSS(f.url, f.name, f.badge))
+  );
+  let articles = [];
+  results.forEach(r => { if(r.status==='fulfilled') articles.push(...r.value); });
+
+  // Deduplicate by headline similarity
+  const seen = new Set();
+  articles = articles.filter(a => {
+    const key = a.title.toLowerCase().substring(0,40);
+    if(seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+
+  // Apply keyword filter for hyperlocal tabs
+  if(TAB_KEYWORDS[tab]) {
+    const kws = TAB_KEYWORDS[tab];
+    const filtered = articles.filter(a =>
+      kws.some(kw => a.title.toLowerCase().includes(kw))
+    );
+    if(filtered.length >= 4) {
+      document.getElementById('indiaAlert').style.display = 'none';
+      return filtered;
+    }
+    // Not enough hyperlocal, show all India news with alert
+    document.getElementById('indiaAlert').style.display = 'block';
+    return articles;
+  }
+  document.getElementById('indiaAlert').style.display = 'none';
+  return articles;
+}
+
+// ═══════════════════════════════════════════════════════
+//  RENDER NEWS
+// ═══════════════════════════════════════════════════════
+let latestHeadlines = [];
+let currentTab = 'world';
+
+function badgeHTML(badge, source) {
+  const cls = {india:'badge-india', world:'badge-world', tech:'badge-tech', biz:'badge-biz'}[badge] || 'badge-world';
+  return `<span class="news-source-badge ${cls}">${source}</span>`;
+}
+
+async function renderNews(tab) {
+  document.getElementById('newsData').innerHTML = '<div class="loading">LOADING INTELLIGENCE...</div>';
+  document.getElementById('newsCount').textContent = '';
+
+  const articles = await fetchTabNews(tab);
+  latestHeadlines = articles.map(a => a.title);
+
+  if(articles.length === 0) {
+    document.getElementById('newsData').innerHTML =
+      `<div class="loading">FEED UNAVAILABLE<br><button class="retry-btn" onclick="switchNewsTab('${tab}')">RETRY</button></div>`;
+    return;
+  }
+
+  document.getElementById('newsCount').textContent = `(${articles.length})`;
+
+  let html = '';
+  articles.slice(0,12).forEach(item => {
+    const time = item.pubDate ? new Date(item.pubDate).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : '';
+    html += `<div class="news-item" onclick="window.open('${item.link}','_blank')">
+      <div class="news-headline">${badgeHTML(item.badge, item.source)} ${item.title.substring(0,110)}</div>
+      <div class="news-meta">🕒 ${time}</div>
+    </div>`;
+  });
+  document.getElementById('newsData').innerHTML = html;
+  document.getElementById('lastUpdate').textContent = 'LAST UPDATE: ' + new Date().toLocaleTimeString('en-IN');
+}
+
+function switchNewsTab(tab, btn) {
+  currentTab = tab;
+  // Update active tab
+  document.querySelectorAll('.news-tab').forEach(b => b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  renderNews(tab);
+}
+
+function speakLatestNews() {
+  if(latestHeadlines.length === 0) { speak("No headlines available, Boss."); return; }
+  speak(`Here are the top headlines, Boss.`);
+  latestHeadlines.slice(0,5).forEach((h,i) => {
+    setTimeout(() => speak(`${i+1}. ${h}.`), i * 3200);
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  MARKETS (multi-fallback)
+// ═══════════════════════════════════════════════════════
+async function fetchMarkets() {
+  const tickers = [
+    {sym:'^GSPC', label:'S&P 500'},
+    {sym:'^IXIC', label:'NASDAQ'},
+    {sym:'^BSESN',label:'SENSEX'},
+    {sym:'^NSEI', label:'NIFTY 50'},
+    {sym:'AAPL',  label:'APPLE'},
+    {sym:'NVDA',  label:'NVIDIA'}
+  ];
+  let html = '';
+  for(const t of tickers) {
+    try {
+      const proxy = 'https://corsproxy.io/?';
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${t.sym}?interval=1d&range=1d`;
+      const res = await fetch(proxy + encodeURIComponent(url), {signal:AbortSignal.timeout(6000)});
+      if(!res.ok) throw new Error();
+      const d = await res.json();
+      const meta  = d.chart.result[0].meta;
+      const price = meta.regularMarketPrice;
+      const prev  = meta.chartPreviousClose || meta.previousClose;
+      const change= price - prev;
+      const pct   = ((change/prev)*100).toFixed(2);
+      const dir   = change >= 0 ? 'up':'down';
+      const arrow = change >= 0 ? '▲':'▼';
+      html += `<div class="ticker">
+        <span class="ticker-name">${t.label}</span>
+        <span class="ticker-price ${dir}">${price.toFixed(2)}</span>
+        <span class="ticker-change ${dir}">${arrow}${Math.abs(pct)}%</span>
+      </div>`;
+    } catch {
+      // Mock fallback
+      const mock = {
+        'S&P 500':{p:5120,c:0.45},'NASDAQ':{p:16090,c:-0.12},
+        'SENSEX':{p:73450,c:0.33},'NIFTY 50':{p:22300,c:0.28},
+        'APPLE':{p:175,c:1.02},'NVIDIA':{p:895,c:3.21}
+      };
+      const m = mock[t.label] || {p:100,c:0};
+      const dir = m.c>=0?'up':'down'; const arrow = m.c>=0?'▲':'▼';
+      html += `<div class="ticker">
+        <span class="ticker-name">${t.label}</span>
+        <span class="ticker-price ${dir}">${m.p.toFixed(2)}</span>
+        <span class="ticker-change ${dir}">${arrow}${Math.abs(m.c)}% <span style="font-size:7px">(demo)</span></span>
+      </div>`;
+    }
+  }
+  document.getElementById('marketsData').innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════
+//  CRYPTO
+// ═══════════════════════════════════════════════════════
+async function fetchCrypto() {
+  const coins = ['bitcoin','ethereum','solana','dogecoin','binancecoin'];
+  try {
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${coins.join(',')}&vs_currencies=usd,inr&include_24hr_change=true`,
+      {signal:AbortSignal.timeout(8000)}
+    );
+    if(!res.ok) throw new Error();
+    const data = await res.json();
+    let html = '';
+    for(const coin of coins) {
+      const d = data[coin];
+      if(!d) continue;
+      const dir = d.usd_24h_change>=0?'up':'down';
+      const arrow = d.usd_24h_change>=0?'▲':'▼';
+      html += `<div class="crypto-item">
+        <span class="crypto-name">${coin.substring(0,4).toUpperCase()}</span>
+        <span class="crypto-val ${dir}">$${d.usd.toLocaleString()}</span>
+        <span class="ticker-change ${dir}">${arrow}${Math.abs(d.usd_24h_change).toFixed(1)}%</span>
+      </div>`;
+    }
+    document.getElementById('cryptoData').innerHTML = html;
+  } catch {
+    document.getElementById('cryptoData').innerHTML =
+      `<div class="loading">CRYPTO OFFLINE <button class="retry-btn" onclick="fetchCrypto()">RETRY</button></div>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  QUERY HANDLER
+// ═══════════════════════════════════════════════════════
+async function handleQuery(queryOverride=null) {
+  let q = queryOverride || document.getElementById('queryInput').value.trim();
+  if(!q) return;
+
+  document.getElementById('queryDisplay').textContent = '🔍 ' + q.toUpperCase();
+  document.getElementById('briefContent').innerHTML =
+    '<div class="loading">PROCESSING... FRIDAY ONLINE</div><span class="typing-cursor"></span>';
+
+  const low = q.toLowerCase();
+
+  // Detect intent
+  const isIndia   = /india|indian|bharat/.test(low);
+  const isNoida   = /noida|greater noida|ghaziabad|ncr/.test(low);
+  const isDelhi   = /delhi|new delhi/.test(low);
+  const isTech    = /tech|technology/.test(low);
+  const isBiz     = /business|economy|finance|market/.test(low);
+  const isSports  = /sports|cricket|ipl|football/.test(low);
+  const isWorld   = /world|global|international/.test(low);
+  const isMarket  = /stock|market|sensex|nifty|nasdaq|s&p/.test(low);
+  const isCrypto  = /crypto|bitcoin|ethereum|btc|eth/.test(low);
+  const isWeather = /weather|rain|temperature/.test(low);
+
+  // Switch news tab based on query
+  let targetTab = 'world';
+  if(isNoida)        targetTab = 'noida';
+  else if(isDelhi)   targetTab = 'delhi';
+  else if(isIndia)   targetTab = 'india';
+  else if(isTech)    targetTab = 'tech';
+  else if(isBiz)     targetTab = 'business';
+  else if(isSports)  targetTab = 'sports';
+
+  // Activate correct tab
+  if(targetTab !== currentTab) {
+    const tabBtn = [...document.querySelectorAll('.news-tab')]
+      .find(b => b.textContent.toLowerCase().includes(targetTab.split('/')[0]));
+    switchNewsTab(targetTab, tabBtn);
+  }
+
+  if(isMarket) { await fetchMarkets(); speak("Markets refreshed, Boss."); }
+  if(isCrypto) { await fetchCrypto();  speak("Crypto prices updated, Boss."); }
+  if(isWeather){ speak("Opening weather map, Boss."); window.open('https://www.windy.com','_blank'); }
+
+  // Speak news summary
+  await new Promise(r=>setTimeout(r,1500));
+  if(latestHeadlines.length>0) {
+    const regionStr = isNoida?"Noida":isDelhi?"Delhi":isIndia?"India":isWorld?"the world":"";
+    speak(`Here's what's happening${regionStr?" in "+regionStr:", Boss."}`);
+    latestHeadlines.slice(0,3).forEach((h,i)=>{
+      setTimeout(()=>speak(`${i+1}. ${h}.`), i*3000);
+    });
+  }
+
+  setTimeout(()=>{
+    document.getElementById('briefContent').innerHTML =
+      `<span class="highlight">✔ Command executed, Boss.</span><br/>
+       Region: ${targetTab.toUpperCase()}<br/>
+       Headlines loaded. FRIDAY online.<span class="typing-cursor"></span>`;
+  }, 600);
+}
+
+document.getElementById('queryInput').addEventListener('keydown',e=>{if(e.key==='Enter')handleQuery();});
+
+// ═══════════════════════════════════════════════════════
+//  AUTO-RUN FROM FRIDAY PYTHON (URL param)
+// ═══════════════════════════════════════════════════════
+const urlParams    = new URLSearchParams(window.location.search);
+const queryFromBot = urlParams.get('q');
+if(queryFromBot) {
+  const decoded = decodeURIComponent(queryFromBot);
+  document.getElementById('queryInput').value = decoded;
+  setTimeout(()=>handleQuery(decoded), 1800);
+}
+
+// ═══════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════
+fetchMarkets();
+fetchCrypto();
+renderNews('world');
+
+setInterval(fetchMarkets, 60000);
+setInterval(fetchCrypto,  45000);
+setInterval(()=>renderNews(currentTab), 90000);
+
+setTimeout(()=>speak("F.R.I.D.A.Y. online. Intelligence dashboard ready, Boss."), 2000);
+</script>
+</body>
+</html>
